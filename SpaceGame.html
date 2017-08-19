@@ -1,0 +1,409 @@
+<html>
+<head>
+<meta charset= "utf-8">
+<style type="text/css">
+body{
+  margin:0;
+}
+</style>
+</head>
+<body>
+<canvas width='100' height='100'  id='canvas'></canvas>
+<script>
+window.onload = function(){
+    canvas = document.getElementById('canvas');
+    size();
+	calculateState();
+	onloadCreateStars();
+	
+	document.addEventListener('keydown', function(e) {
+        setKey(e, true);
+    });
+
+    document.addEventListener('keyup', function(e) {
+        setKey(e, false);
+    });
+}
+
+/*window.onresize = function () {
+	setTimeout( function() { location.reload(); }, 1000 );
+}*/
+
+//Game state
+var player = {
+	pos: [0, 0],
+	spriteW : 77,
+	spriteH : 72,
+	speed : 300,
+	sprite : 1,
+	flame_sprite : 0,
+	flame_size: [24, 30],
+	flameleft : [3, 63],
+	flameright : [44, 63]
+	//sprite: [0, 1, 2, 3, 4, 5, 6, 7]
+};
+
+var Game_state = {
+	game_time : 0,
+	windowWidth : 0,
+	windowHeight : 0
+};
+
+var Stars = {
+	quantity : 0,
+	b_quantity : 0,
+	speed1 : 100,
+	speed2 : 60,
+	speed3 : 30,
+	b_speed1 : 60,
+	b_speed2 : 40,
+	b_speed3 : 20,
+	time_create : 0,
+	b_time_create : 0
+};
+
+var asteroids = {
+	quantity : 2,
+}
+
+
+var star_mass = [];  //содержит в себе массивы вида: [x, y, номер спрайта по x, номер спрайта по y, горит ли звезда, скорость звезды]
+var big_star_mass = []; //содержит в себе массивы вида: [x, y, номер спрайта по x, номер спрайта по y, тип звезды, скорость звезды]
+var asteroidsMass = []; //содержит в себе массивы вида: [x, y, скорость астероида, угол поворота спрайта]
+
+var ctx = document.querySelector("canvas").getContext("2d");
+var ship = document.createElement("img");
+ship.src = "ship.png";
+var flame = document.createElement("img");
+flame.src = "Fire.png";
+var star_image = document.createElement("img");
+star_image.src = "Star.png";
+var big_star1 = document.createElement("img");
+big_star1.src = "Star1.png";
+var big_star2 = document.createElement("img");
+big_star2.src = "Star2.png";
+var asteroid_image = document.createElement("img");
+asteroid_image.src = "asteroid.png";
+
+
+function onloadCreateStars(){
+	for (var i =0 ; i < Stars.quantity ; i++) {
+		var X = Math.floor(Math.random() * canvas.width);
+		var Y = Math.floor(Math.random() * canvas.height);
+		
+		var starStats = createStarsState();
+		
+		star_mass.unshift( [X, Y, starStats[0], starStats[1], starStats[2], starStats[3]] );
+	}
+	for (var i =0 ; i < Stars.b_quantity ; i++){
+		var X = Math.floor(Math.random() * canvas.width);
+		var Y = Math.floor(Math.random() * canvas.height);
+		
+		var starStats = createStarsState();
+		
+		big_star_mass.unshift( [X, Y, starStats[0], starStats[1], starStats[2], starStats[3]] );
+	}
+}
+
+//add new stars
+var starCreateTime = 0;
+var bigStarCreateTime = 0;
+function addNewStars(dt) {
+
+	starCreateTime += dt;
+	bigStarCreateTime += dt;
+	
+	if ( starCreateTime > Stars.time_create && Stars.time_create > 0) {
+		/*if (star_mass.length > Stars.quantity) {
+			star_mass.pop();
+		}*/
+		var X = Math.floor(Math.random() * canvas.width);
+		
+		var starStats = createStarsState();
+		star_mass.unshift( [X, 0, starStats[0], starStats[1], starStats[2], starStats[3]] );
+		
+		starCreateTime = starCreateTime % Stars.time_create;
+	}
+
+	if ( bigStarCreateTime > Stars.b_time_create && Stars.b_time_create > 0 ) {
+		/*if (big_star_mass.length > Stars.b_quantity) {
+			big_star_mass.pop();
+		}*/
+		var X = Math.floor(Math.random() * canvas.width);
+
+		var starStats = createStarsState();
+		big_star_mass.unshift( [X, 0, starStats[0], starStats[1], starStats[2], starStats[3]] );
+		
+		bigStarCreateTime = bigStarCreateTime % Stars.b_time_create;
+	}
+}
+
+function createStarsState() {
+	var sprite_numX = Math.floor(Math.random() * 5);
+	var sprite_numY = Math.floor(Math.random() * 9);
+	var star_type = Math.floor(Math.random() * 2);
+	var star_speed = Math.floor(Math.random() * 3);
+	if (star_speed == 0){
+		star_speed = Stars.b_speed1;
+	} else if (star_speed == 1) {
+		star_speed = Stars.b_speed2;
+	} else {
+		star_speed = Stars.b_speed3;
+	}
+	var starState = [sprite_numX, sprite_numY, star_type, star_speed];	
+	return starState;
+}
+
+var requestAnimFrame = (function() {
+    return window.requestAnimationFrame    ||
+        window.webkitRequestAnimationFrame ||
+        window.mozRequestAnimationFrame    ||
+        window.msRequestAnimationFrame     ||
+        function(callback){
+            window.setTimeout(callback, 1000 / 60);
+        };
+})();
+
+var pressedKeys = {};
+
+function setKey(event, status) {
+	var code = event.keyCode;
+	var key;
+
+	switch(code) {
+	case 65:
+		key = 'LEFT'; break;
+	case 87:
+		key = 'UP'; break;
+	case 68:
+		key = 'RIGHT'; break;
+	case 83:
+		key = 'DOWN'; break;
+	default:
+		// Convert ASCII codes to letters
+		key = String.fromCharCode(code);
+	}
+
+	pressedKeys[key] = status;
+	console.log(pressedKeys);
+}
+
+function playerMove(dt) {
+    if(pressedKeys['LEFT']) {
+		player.pos[0] -= player.speed * dt;
+		player.sprite = 0;
+		player.flameleft = [0, 63];
+		player.flameright = [26, 63];
+    }
+
+    if(pressedKeys['RIGHT']) {
+		player.pos[0] += player.speed * dt;
+		player.sprite = 2;
+		player.flameleft = [24, 63];
+		player.flameright = [52, 63];
+    }
+    if(pressedKeys['UP']) {
+		player.pos[1] -= player.speed * dt;
+		player.flame_sprite = 2;
+		
+    }
+
+    if(pressedKeys['DOWN']) {
+		player.pos[1] += player.speed * dt;
+		player.flame_sprite = 1;
+    }
+	
+	if (!pressedKeys['LEFT'] && !pressedKeys['RIGHT'])
+	{
+		player.sprite = 1;
+		player.flameleft = [4, 63];
+		player.flameright = [46, 63];
+	}
+	if (pressedKeys['LEFT'] && pressedKeys['RIGHT'])
+	{
+		player.sprite = 1;
+		player.flameleft = [4, 63];
+		player.flameright = [46, 63];
+	}
+	if (!pressedKeys['UP'] && !pressedKeys['DOWN'])
+	{
+		player.flame_sprite = 0;
+	}
+	if (pressedKeys['UP'] && pressedKeys['DOWN'])
+	{
+		player.flame_sprite = 0;
+	}
+}
+
+function size(){
+	if (window.innerWidth >= 1000){
+		canvas.width = window.innerWidth;
+		//Game_state.windowWidth = window.innerWidth;
+	}else{
+		canvas.width = 1000;
+		//Game_state.windowWidth = 1000;
+	}
+	if (window.innerHeight >= 600){
+		canvas.height = window.innerHeight;
+		//Game_state.windowHeight = window.innerHeight;
+	}else{
+		canvas.height = 600;
+		//Game_state.windowHeight = 600;
+	}
+}
+
+function calculateState(){
+	Stars.quantity = Math.floor(canvas.width * canvas.height / 5000);//3000
+	Stars.b_quantity = Math.floor(canvas.width * canvas.height / 50000);//30000
+	player.pos[0] = (canvas.width -  player.spriteW)/ 2;
+	player.pos[1] = (canvas.height - player.spriteH)* 0.75;
+	Stars.time_create = (canvas.height / Stars.quantity) / Stars.speed3;    //сначала находим промежуток между звездами, а потом делим на скорость звезды 
+	Stars.b_time_create = (canvas.height / Stars.b_quantity) / Stars.b_speed3;//(самой медленной из наших звезд)это и будет наш интервал появления между звёздами
+}                                                                   	  
+
+function gameTime(dt)//в секундах
+{
+	Game_state.game_time += dt;
+}
+
+var cycle = 0;
+function renderPlayer(entity) {
+    ctx.save();
+    ctx.translate(0,0); //entity.pos[0], entity.pos[1]);
+	cycle = Math.ceil(Game_state.game_time / 0.0416) % 6;
+	ctx.drawImage(flame,
+			   cycle*24, player.flame_sprite*30, 24, 30,
+			   player.pos[0] + player.flameleft[0],  player.pos[1] + player.flameleft[1], 24, 30);
+	ctx.drawImage(flame,
+			   cycle*24, player.flame_sprite*30, 24, 30,
+			    player.pos[0] + player.flameright[0],  player.pos[1] + player.flameright[1], 24, 30);
+    ctx.restore();
+	cycle = Math.ceil(Game_state.game_time / 0.0825) % 8;
+	ctx.drawImage(ship,
+			   // source rectangle
+			   cycle*77, player.sprite * player.spriteH, player.spriteW, player.spriteH,
+			   // destination rectangle
+			   player.pos[0],               player.pos[1], player.spriteW, player.spriteH);	
+}
+
+function starsMove(dt) {
+	for (i=0; i < star_mass.length; i++){
+		star_mass[i][1] += star_mass[i][5] * dt;
+	}
+	for (i=0; i < big_star_mass.length; i++){
+		big_star_mass[i][1] += big_star_mass[i][5] * dt;
+	}
+}
+
+function renderStars() {
+	cycle = Math.ceil(Game_state.game_time / 0.15) % 4;
+	for (i=0; i < star_mass.length; i++){
+		if(star_mass[i][4] == 1){
+			var n = (star_mass[i][3] + cycle) % 4;
+			ctx.drawImage(star_image,
+			star_mass[i][2]*5, n*5, 5, 5,
+			star_mass[i][0], star_mass[i][1], 5, 5);
+		}else{
+			ctx.drawImage(star_image,
+			star_mass[i][2]*5, 0, 5, 5,
+			star_mass[i][0], star_mass[i][1], 5, 5);
+		}
+	}
+	for (i=0; i < big_star_mass.length; i++){
+		var n = (big_star_mass[i][3] + cycle) % 9;
+		if(big_star_mass[i][4] == 1){
+			ctx.drawImage(big_star1,
+			big_star_mass[i][2]*23, n*21, 23, 21,
+			big_star_mass[i][0], big_star_mass[i][1], 23, 21);
+		}else{
+			ctx.drawImage(big_star2,
+			big_star_mass[i][2]*17, n*15, 17, 15,
+			big_star_mass[i][0], big_star_mass[i][1], 17, 15);
+		}
+	}
+	
+}
+
+function render() {
+	ctx.fillStyle = "#00000000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+	renderStars();
+    renderPlayer(player);
+};
+
+function checkPlayerBounds() {
+    if(player.pos[0] < 0) {
+        player.pos[0] = 0;
+    }
+    else if(player.pos[0] > canvas.width - player.spriteW) {
+        player.pos[0] = canvas.width - player.spriteW;
+    }
+
+    if(player.pos[1] < 0) {
+        player.pos[1] = 0;
+    }
+    else if(player.pos[1] > canvas.height - player.spriteH) {
+        player.pos[1] = canvas.height - player.spriteH;
+    }
+}
+
+function checkStarsBounds() {
+	for (var i=0 ; i < star_mass.length ; i++) {
+		if (star_mass[i][1] > canvas.height*1.1) {
+			star_mass.splice(i, 1);
+		}
+	}
+	for (var i=0 ; i < big_star_mass.length ; i++) {
+		if (big_star_mass[i][1] > canvas.height*1.1) {
+			big_star_mass.splice(i, 1);
+		}
+	}
+}
+
+function reloadPage () {
+	if ( window.innerHeight > canvas.height ) {
+		setTimeout( function() { location.reload(); }, 1000 );
+	} else if ( ( window.innerHeight < canvas.height ) && ( canvas.height != 600 ) ) {
+		setTimeout( function() { location.reload(); }, 1000 );
+	}
+	
+	if ( window.innerWidth > canvas.width ) {
+		setTimeout( function() { location.reload(); }, 1000 );
+	} else if ( ( window.innerWidth < canvas.width ) && ( canvas.width != 1000 ) ) {
+		setTimeout( function() { location.reload(); }, 1000 );
+	}
+}
+
+var lastTime= Date.now();
+main();
+//main loop
+function main() {
+	var now = Date.now();
+	var dt = (now - lastTime) / 1000.0;
+	if (dt > 1){
+		dt = 0.05;
+	}
+	
+	playerMove(dt);
+	checkPlayerBounds();
+	starsMove(dt);
+	checkStarsBounds();
+	gameTime(dt);
+	addNewStars(dt);
+	render();	
+	
+	if ( Game_state.game_time > 1 ) {
+		reloadPage();
+	}
+	
+	lastTime = now;
+	requestAnimFrame(main);
+	/*var dt = 0.05;
+	var timerId = setInterval(function() {
+		playerMove(dt);
+	}, 50);*/
+};
+
+</script>
+</body>
+</html>
